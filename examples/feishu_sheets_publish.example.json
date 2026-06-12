@@ -1,0 +1,43 @@
+{
+  "spreadsheet_token": "replace_with_fixed_feishu_spreadsheet_token",
+  "clear_before_write": true,
+  "max_clear_rows": 2000,
+  "min_clear_cols": 30,
+  "sheets": [
+    {
+      "sheet_id": "replace_fact_sheet_id",
+      "name": "fact_demand_efficiency",
+      "source": "../data/efficiency_datamart/demand_detail.csv"
+    },
+    {
+      "sheet_id": "replace_monthly_sheet_id",
+      "name": "agg_monthly_efficiency",
+      "source": "../data/efficiency_datamart/monthly_metrics.csv"
+    },
+    {
+      "sheet_id": "replace_quarterly_sheet_id",
+      "name": "agg_quarterly_efficiency",
+      "source": "../data/efficiency_datamart/quarterly_metrics.csv"
+    },
+    {
+      "sheet_id": "replace_size_sheet_id",
+      "name": "agg_size_efficiency",
+      "source": "../data/efficiency_datamart/size_metrics.csv"
+    },
+    {
+      "sheet_id": "replace_yoy_sheet_id",
+      "name": "agg_yoy_2026_1_5",
+      "source": "../data/efficiency_datamart/yoy_2026_1_5.csv"
+    },
+    {
+      "sheet_id": "replace_metric_sheet_id",
+      "name": "dim_metric",
+      "source": "../data/efficiency_datamart/metric_dictionary.csv"
+    },
+    {
+      "sheet_id": "replace_field_sheet_id",
+      "name": "dim_field_source",
+      "source": "../data/efficiency_datamart/field_dictionary.csv"
+    }
+  ]
+}

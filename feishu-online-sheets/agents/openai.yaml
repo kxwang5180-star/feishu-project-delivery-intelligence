@@ -1,0 +1,6 @@
+interface:
+  display_name: "飞书在线表格"
+  short_description: "发布和更新固定飞书在线电子表格"
+  default_prompt: "Use $feishu-online-sheets to publish local CSV data into a fixed Feishu online spreadsheet."
+policy:
+  allow_implicit_invocation: true

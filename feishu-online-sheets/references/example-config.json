@@ -1,0 +1,17 @@
+{
+  "spreadsheet_token": "shtcnxxxxxxxx",
+  "clear_before_write": true,
+  "max_clear_rows": 2000,
+  "sheets": [
+    {
+      "sheet_id": "abc123",
+      "name": "fact_demand_efficiency",
+      "source": "data/efficiency_datamart/demand_detail.csv"
+    },
+    {
+      "sheet_id": "def456",
+      "name": "dim_metric",
+      "source": "data/efficiency_datamart/metric_dictionary.csv"
+    }
+  ]
+}
