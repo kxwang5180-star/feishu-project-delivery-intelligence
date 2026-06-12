@@ -9,6 +9,8 @@ description: Publish, overwrite, and refresh fixed Feishu/Lark online spreadshee
 
 Use this skill for fixed Feishu online spreadsheet publishing. Prefer it over document-block creation when the output is tabular, large, recurring, or needs to be connected by dashboards.
 
+It also includes a Base/Bitable publisher for `/base/<app_token>?table=<table_id>` URLs when the target is a Feishu 多维表格 rather than a Sheets spreadsheet.
+
 ## Decision Rules
 
 - Use an existing fixed spreadsheet when the user says “不要产生新的文档”, “固定文档”, “月度自动更新”, or provides a `/sheets/` URL.
@@ -72,6 +74,45 @@ python3 /Users/kk/.codex/skills/feishu-online-sheets/scripts/publish_sheet.py \
 ```
 
 5. Verify the response summary includes successful writes for every configured sheet.
+
+## Base/Bitable Workflow
+
+For a Feishu Base URL, extract:
+
+```text
+https://tenant.feishu.cn/base/<app_token>?table=<table_id>&view=<view_id>
+```
+
+Then prepare a config and probe fields:
+
+```sh
+python3 /Users/kk/.codex/skills/feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json \
+  --probe-fields
+```
+
+Dry run:
+
+```sh
+python3 /Users/kk/.codex/skills/feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json \
+  --dry-run
+```
+
+Publish:
+
+```sh
+python3 /Users/kk/.codex/skills/feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json
+```
+
+Skip formula and auto fields with `skip_fields`, for example:
+
+```json
+{
+  "skip_fields": ["研发时长/测试时长", "created_at", "执行日期"]
+}
+```
 
 ## Config Shape
 

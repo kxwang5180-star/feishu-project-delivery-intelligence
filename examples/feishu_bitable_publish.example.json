@@ -1,0 +1,28 @@
+{
+  "app_token": "NgEPbbtokaswvBstu0DcMYMlnKg",
+  "table_id": "tblPz1BLjGbtQymz",
+  "view_id": "vew94Si1aL",
+  "source": "../data/efficiency_datamart/demand_detail.csv",
+  "field_dictionary": "../data/efficiency_datamart/field_dictionary.csv",
+  "skip_fields": [
+    "研发时长/测试时长",
+    "created_at",
+    "执行日期"
+  ],
+  "field_map": {
+    "需求ID": "work_item_id",
+    "需求名称": "demand_name",
+    "需求状态": "status",
+    "项目上线时间": "online_time",
+    "上线日期": "online_date",
+    "上线月份": "online_month",
+    "上线季度": "online_quarter",
+    "交付投入人天": "metric_delivery_effort_days",
+    "交付周期": "metric_delivery_effort_days",
+    "研发人天": "metric_rd_days_excl_test",
+    "测试人天": "metric_test_days",
+    "需求规模": "new_size_group",
+    "参与人数": "participant_count",
+    "研发参与人数": "dev_participant_count"
+  }
+}
