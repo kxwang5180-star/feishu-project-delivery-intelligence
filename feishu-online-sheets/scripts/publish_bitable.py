@@ -167,6 +167,81 @@ def batch_create_records(base_url: str, token: str, app_token: str, table_id: st
     return written
 
 
+def list_records(base_url: str, token: str, app_token: str, table_id: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    page_token = ""
+    while True:
+        query = urllib.parse.urlencode({"page_size": 500, **({"page_token": page_token} if page_token else {})})
+        url = f"{base_url}/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records?{query}"
+        data = request_json("GET", url, token=token)
+        if data.get("code") != 0:
+            raise RuntimeError(f"Feishu bitable record list failed: code={data.get('code')} msg={data.get('msg')}")
+        payload = data.get("data", {})
+        for item in payload.get("items") or []:
+            records.append(item)
+        if not payload.get("has_more"):
+            break
+        page_token = payload.get("page_token") or ""
+    return records
+
+
+def list_record_ids(base_url: str, token: str, app_token: str, table_id: str) -> list[str]:
+    return [record["record_id"] for record in list_records(base_url, token, app_token, table_id) if record.get("record_id")]
+
+
+def batch_delete_records(base_url: str, token: str, app_token: str, table_id: str, record_ids: list[str], chunk_size: int) -> int:
+    deleted = 0
+    for i in range(0, len(record_ids), chunk_size):
+        part = record_ids[i : i + chunk_size]
+        url = f"{base_url}/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_delete"
+        data = request_json("POST", url, token=token, body={"records": part})
+        if data.get("code") != 0:
+            raise RuntimeError(f"Feishu bitable batch_delete failed: code={data.get('code')} msg={data.get('msg')} data={data.get('data')}")
+        deleted += len(part)
+        time.sleep(0.2)
+    return deleted
+
+
+def batch_update_records(base_url: str, token: str, app_token: str, table_id: str, records: list[dict[str, Any]], chunk_size: int) -> int:
+    updated = 0
+    for i in range(0, len(records), chunk_size):
+        part = records[i : i + chunk_size]
+        url = f"{base_url}/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_update"
+        data = request_json("POST", url, token=token, body={"records": part})
+        if data.get("code") != 0:
+            raise RuntimeError(f"Feishu bitable batch_update failed: code={data.get('code')} msg={data.get('msg')} data={data.get('data')}")
+        updated += len(part)
+        time.sleep(0.2)
+    return updated
+
+
+def record_key(fields: dict[str, Any], unique_fields: list[str]) -> str:
+    return "\u241f".join(str(fields.get(field, "")).strip() for field in unique_fields)
+
+
+def split_upserts(records: list[dict[str, Any]], existing_records: list[dict[str, Any]], unique_fields: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    existing_by_key: dict[str, str] = {}
+    for item in existing_records:
+        fields = item.get("fields") or {}
+        key = record_key(fields, unique_fields)
+        if key and key not in existing_by_key and item.get("record_id"):
+            existing_by_key[key] = item["record_id"]
+    source_keys: set[str] = set()
+    to_create: list[dict[str, Any]] = []
+    to_update: list[dict[str, Any]] = []
+    for record in records:
+        fields = record.get("fields") or {}
+        key = record_key(fields, unique_fields)
+        if key:
+            source_keys.add(key)
+        if key and key in existing_by_key:
+            to_update.append({"record_id": existing_by_key[key], "fields": fields})
+        else:
+            to_create.append(record)
+    stale_record_ids = [record_id for key, record_id in existing_by_key.items() if key not in source_keys]
+    return to_create, to_update, stale_record_ids
+
+
 def resolve_path(path_text: str, base_dir: Path) -> Path:
     p = Path(path_text).expanduser()
     return p if p.is_absolute() else (base_dir / p).resolve()
@@ -177,6 +252,9 @@ def main() -> int:
     parser.add_argument("--config", required=True, help="JSON config for app_token, table_id, source, mappings, and skip fields")
     parser.add_argument("--probe-fields", action="store_true", help="Only list table fields and planned mappings")
     parser.add_argument("--dry-run", action="store_true", help="Build records but do not write")
+    parser.add_argument("--replace-all", action="store_true", help="Delete all existing table records before creating new records")
+    parser.add_argument("--upsert", action="store_true", help="Update existing records by config.unique_fields and create missing records")
+    parser.add_argument("--sync-stale", action="store_true", help="With --upsert, delete existing records whose unique key is not present in the source")
     parser.add_argument("--limit", type=int, default=None, help="Limit source rows for testing")
     parser.add_argument("--chunk-size", type=int, default=500, help="Records per batch_create call")
     args = parser.parse_args()
@@ -217,12 +295,34 @@ def main() -> int:
         "mapped_fields": mapped_fields,
     }
 
+    existing_record_ids = list_record_ids(base_url, token, app_token, table_id) if args.replace_all else []
+    existing_records = list_records(base_url, token, app_token, table_id) if args.upsert else []
+    if args.replace_all:
+        summary["existing_rows"] = len(existing_record_ids)
+    if args.upsert:
+        unique_fields = list(config.get("unique_fields") or [])
+        if not unique_fields:
+            raise RuntimeError("--upsert requires config.unique_fields")
+        to_create, to_update, stale_record_ids = split_upserts(records, existing_records, unique_fields)
+        summary["existing_rows"] = len(existing_records)
+        summary["unique_fields"] = unique_fields
+        summary["to_create_rows"] = len(to_create)
+        summary["to_update_rows"] = len(to_update)
+        summary["stale_rows"] = len(stale_record_ids)
     if args.probe_fields or args.dry_run:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 0
 
-    written = batch_create_records(base_url, token, app_token, table_id, records, args.chunk_size)
-    print(json.dumps({**summary, "written_rows": written}, ensure_ascii=False, indent=2))
+    deleted = batch_delete_records(base_url, token, app_token, table_id, existing_record_ids, args.chunk_size) if args.replace_all else 0
+    if args.upsert:
+        stale_deleted = batch_delete_records(base_url, token, app_token, table_id, stale_record_ids, args.chunk_size) if args.sync_stale else 0
+        written = batch_create_records(base_url, token, app_token, table_id, to_create, args.chunk_size)
+        updated = batch_update_records(base_url, token, app_token, table_id, to_update, args.chunk_size)
+    else:
+        stale_deleted = 0
+        written = batch_create_records(base_url, token, app_token, table_id, records, args.chunk_size)
+        updated = 0
+    print(json.dumps({**summary, "deleted_rows": deleted, "stale_deleted_rows": stale_deleted, "updated_rows": updated, "written_rows": written}, ensure_ascii=False, indent=2))
     return 0
 
 
