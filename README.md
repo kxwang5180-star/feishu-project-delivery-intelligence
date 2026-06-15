@@ -1,8 +1,6 @@
 # 飞书项目交付周期周度自动更新工具包
 
-> 推荐仓库名：`feishu-project-delivery-cycle-updater`
-
-这个仓库不只是一个 Codex skill。它包含两部分：
+这个仓库包含两部分：
 
 1. `feishu-online-sheets/`：Codex skill，用于把 CSV/XLSX 数据写入固定飞书电子表格或飞书多维表格 Base。
 2. `automation/`：项目交付周期自动刷新任务，用于每周一统计 2025 年至上周日的季度内周度累计指标，并写入飞书 Base 的 `项目交付周期` 表。
