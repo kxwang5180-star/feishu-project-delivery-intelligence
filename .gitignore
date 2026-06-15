@@ -8,3 +8,9 @@ __pycache__/
 *.pyc
 .DS_Store
 config/feishu_sheets_publish.json
+automation/.env.local
+automation/.env
+automation/data/
+automation/logs/
+automation/reports/
+automation/config/feishu_bitable_publish.json

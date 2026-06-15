@@ -1,108 +1,192 @@
-# Feishu Online Sheets Skill
+# 飞书项目交付周期周度自动更新工具包
 
-This repository packages a Codex skill and a reusable publishing script for writing local CSV/XLSX data into a fixed Feishu/Lark online spreadsheet.
+> 推荐仓库名：`feishu-project-delivery-cycle-updater`
 
-It is designed for recurring data mart refreshes where the spreadsheet must stay stable and monthly jobs must overwrite the same sheets instead of creating new Feishu documents.
+这个仓库不只是一个 Codex skill。它包含两部分：
 
-## Contents
+1. `feishu-online-sheets/`：Codex skill，用于把 CSV/XLSX 数据写入固定飞书电子表格或飞书多维表格 Base。
+2. `automation/`：项目交付周期自动刷新任务，用于每周一统计 2025 年至上周日的季度内周度累计指标，并写入飞书 Base 的 `项目交付周期` 表。
 
-```text
-feishu-online-sheets/
-  SKILL.md
-  scripts/publish_sheet.py
-  references/sheets-openapi.md
-  references/example-config.json
-examples/
-  feishu_sheets_publish.example.json
-server/
-  env.example
-  monthly-refresh.cron
-  run_refresh.sh
-```
-
-## What It Does
-
-- Authenticates with Feishu OpenAPI by app ID and app secret.
-- Reads local CSV or XLSX tables.
-- Writes data into a fixed Feishu spreadsheet by `spreadsheet_token` and `sheet_id`.
-- Supports dry-run and spreadsheet access probing.
-- Supports full overwrite by clearing a bounded range before writing new data.
-
-## Required Feishu Permissions
-
-The Feishu app must have spreadsheet permissions enabled and approved.
-
-Minimum recommended scopes:
+当前目标 Base：
 
 ```text
-sheets:spreadsheet
-drive:drive.metadata:readonly
+Base app_token: NgEPbbtokaswvBstu0DcMYMlnKg
+Table: 项目交付周期
+table_id: tblPz1BLjGbtQymz
 ```
 
-If the file-level permission is restricted, grant the app access to the target spreadsheet.
+## 功能
 
-## Local Usage
+- 从飞书项目 MCP 采集需求数据。
+- 生成需求效率数据集市。
+- 生成“季度 + 周次 + 需求分类”的季度内累计指标。
+- 写入飞书多维表格 Base。
+- 按 `季度 + 周次 + 需求分类` 幂等更新：
+  - 已存在记录更新
+  - 新增周次创建
+  - 源数据已不存在的旧周次记录删除
+  - 不做全表删除
+- 跳过公式和自动字段：
+  - `执行日期`
+  - `研发时长/测试时长`
+  - `created_at`
 
-Copy the example config:
+## 写入字段
 
-```sh
-cp examples/feishu_sheets_publish.example.json config/feishu_sheets_publish.json
+```text
+季度
+周次
+需求分类
+需求数
+平均交付周期
+交付中位数
+交付P90
+平均研发时长
+平均测试时长
 ```
 
-Edit:
+## 数据口径
 
-```json
-{
-  "spreadsheet_token": "replace_with_fixed_feishu_spreadsheet_token",
-  "sheets": [
-    {
-      "sheet_id": "replace_fact_sheet_id",
-      "source": "../data/efficiency_datamart/demand_detail.csv"
-    }
-  ]
-}
+- 统计起点：`2025-01-01`
+- 周度刷新：每周一统计到最近一个周日
+- 周次口径：季度内第 N 个 7 天窗口
+- 指标口径：
+  - 平均交付周期：所有人员估分总和，来源 `field_fba983`
+  - 平均研发时长：研发估分，来源 `field_db341e`
+  - 平均测试时长：测试估分，来源 `field_715f2b`
+- 需求分类：
+  - `中小需求`：交付投入人天 <= 60
+  - `大/超大需求`：交付投入人天 > 60
+
+## 目录结构
+
+```text
+.
+├── feishu-online-sheets/              # Codex skill
+│   ├── SKILL.md
+│   └── scripts/
+│       ├── publish_sheet.py           # 写飞书电子表格
+│       └── publish_bitable.py         # 写飞书 Base，多维表格
+├── automation/
+│   ├── scripts/
+│   │   ├── collect_efficiency_enhanced.py
+│   │   ├── export_efficiency_datamart.py
+│   │   ├── build_quarter_week_cumulative_metrics.py
+│   │   └── refresh_project_delivery_cycle_weekly.sh
+│   ├── pmo_agent/                     # 飞书项目 MCP 客户端及字段解析
+│   ├── config/
+│   │   └── feishu_bitable_publish.example.json
+│   └── docs/
+│       └── project-delivery-cycle-server-deploy.md
+├── examples/
+├── server/
+├── requirements.txt
+└── DEPLOY.md
 ```
 
-Probe spreadsheet access:
+## 服务器部署
 
-```sh
-python3 feishu-online-sheets/scripts/publish_sheet.py \
-  --config config/feishu_sheets_publish.json \
-  --probe-spreadsheet
+推荐目录：
+
+```bash
+/opt/feishu-project-delivery-cycle-updater
 ```
 
-Dry run:
+拉取代码：
 
-```sh
-python3 feishu-online-sheets/scripts/publish_sheet.py \
-  --config config/feishu_sheets_publish.json \
-  --dry-run
+```bash
+cd /opt
+git clone https://github.com/kxwang5180-star/Feishu-Online-Sheets-Skill.git feishu-project-delivery-cycle-updater
+cd feishu-project-delivery-cycle-updater
 ```
 
-Publish:
+创建 Python 环境：
 
-```sh
-python3 feishu-online-sheets/scripts/publish_sheet.py \
-  --config config/feishu_sheets_publish.json
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Install As A Codex Skill
+安装 Codex skill：
 
-Copy the skill folder into Codex skills:
-
-```sh
+```bash
 mkdir -p ~/.codex/skills
+rm -rf ~/.codex/skills/feishu-online-sheets
 cp -R feishu-online-sheets ~/.codex/skills/
 ```
 
-Restart Codex so the skill metadata is reloaded.
+准备配置：
 
-## Current Known Blocker
-
-The Feishu app credentials currently authenticate successfully, but spreadsheet probing returned:
-
-```text
-99991672 No permission
+```bash
+cd automation
+cp ../server/env.example .env.local
+cp config/feishu_bitable_publish.example.json config/feishu_bitable_publish.json
 ```
 
-Open the required Sheets/Drive scopes in Feishu Open Platform, then rerun `--probe-spreadsheet`.
+编辑 `automation/.env.local`：
+
+```dotenv
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=xxx
+FEISHU_BASE_URL=https://open.feishu.cn
+
+FEISHU_PROJECT_MCP_URL=xxx
+FEISHU_PROJECT_MCP_TOKEN=xxx
+MEEGO_PROJECT_KEY=信息科技部
+```
+
+`FEISHU_APP_ID` / `FEISHU_APP_SECRET` 必须使用已开通 Base 写入权限的应用。
+
+手动执行一次：
+
+```bash
+cd /opt/feishu-project-delivery-cycle-updater/automation
+PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python \
+BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py \
+bash scripts/refresh_project_delivery_cycle_weekly.sh
+```
+
+指定截止日期：
+
+```bash
+bash scripts/refresh_project_delivery_cycle_weekly.sh 2026-06-14
+```
+
+查看日志：
+
+```bash
+tail -n 200 logs/project_delivery_cycle_weekly.log
+```
+
+## 每周自动更新
+
+每周一 09:30 执行：
+
+```bash
+crontab -e
+```
+
+加入：
+
+```cron
+30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater/automation && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash scripts/refresh_project_delivery_cycle_weekly.sh
+```
+
+## 权限要求
+
+飞书应用至少需要：
+
+```text
+base:field:read
+bitable:app
+```
+
+飞书项目 MCP 还需要可查询 `信息科技部 / 需求` 工作项。
+
+## 注意事项
+
+- 不要提交 `.env.local`、`FEISHU_APP_SECRET`、MCP token。
+- 如果 app secret 曾经出现在聊天或日志中，建议在飞书开放平台轮换。
+- 周度同步采用 upsert，不会每次全表删除。
+- 若周次口径调整，脚本会删除当前源数据中不存在的旧 key。

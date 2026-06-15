@@ -1,0 +1,28 @@
+{
+  "app_token": "NgEPbbtokaswvBstu0DcMYMlnKg",
+  "table_id": "tblPz1BLjGbtQymz",
+  "view_id": "vew94Si1aL",
+  "source": "../data/efficiency_datamart/quarter_week_cumulative_metrics.csv",
+  "field_dictionary": "../data/efficiency_datamart/field_dictionary.csv",
+  "unique_fields": [
+    "季度",
+    "周次",
+    "需求分类"
+  ],
+  "skip_fields": [
+    "研发时长/测试时长",
+    "created_at",
+    "执行日期"
+  ],
+  "field_map": {
+    "季度": "季度",
+    "周次": "周次",
+    "需求分类": "需求分类",
+    "需求数": "需求数",
+    "平均交付周期": "平均交付周期",
+    "交付中位数": "交付中位数",
+    "交付P90": "交付P90",
+    "平均研发时长": "平均研发时长",
+    "平均测试时长": "平均测试时长"
+  }
+}
