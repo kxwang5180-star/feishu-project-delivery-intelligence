@@ -1,116 +1,94 @@
-# 项目交付周期周度自动更新部署说明
+# Project Delivery Cycle Weekly Refresh Deployment
 
-## 目标
+This document describes the production server workflow for refreshing the Feishu Base table `项目交付周期` every Monday.
 
-每周一刷新飞书 Base `项目交付周期` 表，统计范围为 2025-01-01 至上周日。每条记录代表某季度内某周截至日的累计指标，并按需求分类拆分为：
+## Goal
 
-- 中小需求
-- 大/超大需求
+The job publishes quarter-to-date weekly cumulative demand delivery metrics from `2025-01-01` through the latest completed Sunday.
 
-## 更新链路
+Each output row is split by demand category:
 
-1. 从飞书项目采集 2025-01-01 至上周日的需求数据。
-2. 生成本地数据集市。
-3. 生成 `quarter_week_cumulative_metrics.csv`。
-4. 按 `季度 + 周次 + 需求分类` 匹配飞书 Base 现有记录。
-5. 已存在的记录更新，新增周次才创建；当前源数据里已不存在的旧周次键会被删除，避免每周全表删除。
+```text
+中小需求
+大/超大需求
+```
 
-## 服务器目录
+## Workflow
 
-推荐部署到：
+1. Collect demand work items from Feishu Project through the MCP endpoint.
+2. Enrich the demand rows with role, node, schedule, and effort information.
+3. Export the local efficiency datamart.
+4. Generate `quarter_week_cumulative_metrics.csv`.
+5. Read the target Feishu Base table fields.
+6. Match existing Base records by `季度 + 周次 + 需求分类`.
+7. Update existing records, create missing records, and optionally delete stale keys that are no longer present in the source.
+
+Normal weekly refreshes do not delete and rewrite the full table.
+
+## Recommended Server Directory
 
 ```bash
 /opt/feishu-project-delivery-cycle-updater
 ```
 
-## 环境变量
+## Environment Variables
 
-服务器需要在项目根目录放 `.env.local`，至少包含：
+Create `automation/.env.local`:
 
 ```dotenv
 FEISHU_APP_ID=cli_xxx
-FEISHU_APP_SECRET=xxx
+FEISHU_APP_SECRET=replace_on_server
 FEISHU_BASE_URL=https://open.feishu.cn
 
-FEISHU_PROJECT_MCP_URL=xxx
-FEISHU_PROJECT_MCP_TOKEN=xxx
+FEISHU_PROJECT_MCP_URL=replace_with_project_mcp_url
+FEISHU_PROJECT_MCP_TOKEN=replace_with_project_mcp_token
 MEEGO_PROJECT_KEY=信息科技部
+MEEGO_PROJECT_NAME=信息科技部
+MEEGO_WORK_ITEM_TYPE=需求
 ```
 
-`FEISHU_APP_ID` / `FEISHU_APP_SECRET` 必须使用已开通 Base 写入权限的应用。当前验证通过的是用户提供的新应用，而不是旧 `.env.local` 里的应用。
+The Feishu app credentials must belong to an app with Base write permission for the target table. Do not commit `.env.local`.
 
-不要把 `.env.local` 提交到 Git。
+## Python Dependencies
 
-## Python 依赖
-
-导出 Excel 数据集市需要 `openpyxl`：
+The datamart export needs `openpyxl`.
 
 ```bash
-python3 -m pip install openpyxl
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-如果服务器使用虚拟环境，可以设置：
+The refresh scripts use these optional environment variables:
 
 ```bash
-export PYTHON_BIN=/path/to/venv/bin/python
+export PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python
+export BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py
 ```
 
-飞书 Base 发布脚本默认位置：
+## Feishu Base Publish Config
+
+Copy the example config:
 
 ```bash
-export BITABLE_PUBLISHER=$HOME/.codex/skills/feishu-online-sheets/scripts/publish_bitable.py
+cd /opt/feishu-project-delivery-cycle-updater/automation
+cp config/feishu_bitable_publish.example.json config/feishu_bitable_publish.json
 ```
 
-## 手动执行
-
-默认统计到最近一个周日，适合周一运行：
-
-```bash
-bash scripts/refresh_project_delivery_cycle_weekly.sh
-```
-
-指定统计截止日：
-
-```bash
-bash scripts/refresh_project_delivery_cycle_weekly.sh 2026-06-14
-```
-
-## Cron
-
-每周一 09:30 执行：
-
-```cron
-30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater/automation && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash scripts/refresh_project_delivery_cycle_weekly.sh
-```
-
-## 日志
-
-```bash
-tail -n 200 logs/project_delivery_cycle_weekly.log
-```
-
-## 飞书 Base 写入配置
-
-配置文件：
-
-```text
-config/feishu_bitable_publish.json
-```
-
-当前目标：
+Current target:
 
 ```text
 app_token = NgEPbbtokaswvBstu0DcMYMlnKg
 table_id  = tblPz1BLjGbtQymz
 ```
 
-幂等键：
+Unique upsert key:
 
 ```text
 季度 + 周次 + 需求分类
 ```
 
-跳过字段：
+Skipped fields:
 
 ```text
 执行日期
@@ -118,4 +96,70 @@ table_id  = tblPz1BLjGbtQymz
 created_at
 ```
 
-这些字段由飞书公式或自动时间处理。
+These fields are managed by Feishu formulas or automatic fill behavior.
+
+## Manual Run
+
+Default: refresh through the latest completed Sunday.
+
+```bash
+cd /opt/feishu-project-delivery-cycle-updater
+PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python \
+BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py \
+/bin/bash server/run_refresh.sh
+```
+
+Run through a specific Sunday:
+
+```bash
+/bin/bash server/run_refresh.sh 2026-06-14
+```
+
+## Validation
+
+Probe fields:
+
+```bash
+cd /opt/feishu-project-delivery-cycle-updater/automation
+../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json \
+  --probe-fields
+```
+
+Dry-run:
+
+```bash
+../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json \
+  --dry-run
+```
+
+Publish:
+
+```bash
+../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json \
+  --upsert \
+  --sync-stale
+```
+
+## Cron
+
+Run every Monday at 09:30:
+
+```cron
+30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash server/run_refresh.sh
+```
+
+## Logs
+
+```bash
+tail -n 200 /opt/feishu-project-delivery-cycle-updater/automation/logs/project_delivery_cycle_weekly.log
+```
+
+## Failure Handling
+
+- `99991672 Access denied` or `91403 Forbidden`: check the Feishu app credentials and Base/table permissions.
+- Missing or empty `quarter_week_cumulative_metrics.csv`: run the collection and datamart export steps first, or run `server/run_refresh.sh`.
+- Field mapping mismatch: run `--probe-fields` and compare the Base field names with `automation/config/feishu_bitable_publish.json`.
+- Unexpected row deletes: remove `--sync-stale` until the generated source keys have been checked.
