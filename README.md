@@ -1,6 +1,5 @@
 # Feishu Project Delivery Intelligence
 
-Repository slug: **`feishu-project-delivery-cycle-updater`**
 
 This repository packages a delivery intelligence system for Feishu Project. It is not a spreadsheet uploader and it is not merely a Codex skill.
 
@@ -325,12 +324,3 @@ A working Feishu Project MCP endpoint with access to 信息科技部 / 需求
 - Use upsert, not destructive full-table refresh.
 - Treat the Base table as both a dashboard source and a historical archive.
 
-## Suggested Repository Name
-
-Use:
-
-```text
-feishu-project-delivery-cycle-updater
-```
-
-This name reflects the full scope: Feishu Project data extraction, delivery analytics, visualization substrate, and operational knowledge archival.
