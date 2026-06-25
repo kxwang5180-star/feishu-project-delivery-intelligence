@@ -4,7 +4,7 @@ This document describes the production server workflow for refreshing the Feishu
 
 ## Goal
 
-The job publishes quarter-to-date weekly cumulative demand delivery metrics from `2025-01-01` through the latest completed Sunday.
+The job publishes the latest completed week's cumulative demand delivery-cycle metrics using source data from `2025-01-01` through that week.
 
 Each output row is split by demand category:
 
@@ -21,9 +21,9 @@ Each output row is split by demand category:
 4. Generate `quarter_week_cumulative_metrics.csv`.
 5. Read the target Feishu Base table fields.
 6. Match existing Base records by `季度 + 周次 + 需求分类`.
-7. Update existing records, create missing records, and optionally delete stale keys that are no longer present in the source.
+7. Update existing latest-week records or create them if missing.
 
-Normal weekly refreshes do not delete and rewrite the full table.
+Normal weekly refreshes do not delete, rewrite, or correct historical week rows.
 
 ## Recommended Server Directory
 
@@ -100,7 +100,7 @@ These fields are managed by Feishu formulas or automatic fill behavior.
 
 ## Manual Run
 
-Default: refresh through the latest completed Sunday.
+Default: update the latest completed Sunday snapshot.
 
 ```bash
 cd /opt/feishu-project-delivery-cycle-updater
@@ -139,8 +139,7 @@ Publish:
 ```bash
 ../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
   --config config/feishu_bitable_publish.json \
-  --upsert \
-  --sync-stale
+  --upsert
 ```
 
 ## Cron
@@ -162,4 +161,4 @@ tail -n 200 /opt/feishu-project-delivery-cycle-updater/automation/logs/project_d
 - `99991672 Access denied` or `91403 Forbidden`: check the Feishu app credentials and Base/table permissions.
 - Missing or empty `quarter_week_cumulative_metrics.csv`: run the collection and datamart export steps first, or run `server/run_refresh.sh`.
 - Field mapping mismatch: run `--probe-fields` and compare the Base field names with `automation/config/feishu_bitable_publish.json`.
-- Unexpected row deletes: remove `--sync-stale` until the generated source keys have been checked.
+- Unexpected historical changes: confirm the weekly job uses `--latest-week-only` and does not pass `--sync-stale`.

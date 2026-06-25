@@ -1,45 +1,36 @@
-# Operations
+# Operations Runbook
 
-## First-Time Setup
+This runbook covers normal weekly operation, validation, and failure handling.
 
-1. Create a Python virtual environment.
-2. Install `requirements.txt`.
-3. Copy `feishu-online-sheets/` into `~/.codex/skills/` if Codex skill discovery is required.
-4. Create `automation/.env.local`.
-5. Create `automation/config/feishu_bitable_publish.json`.
-6. Run a manual refresh with an explicit date.
+## Normal Weekly Run
 
-## Required Environment Variables
+The production cadence is Monday 09:30.
 
-```dotenv
-FEISHU_APP_ID=cli_xxx
-FEISHU_APP_SECRET=xxx
-FEISHU_BASE_URL=https://open.feishu.cn
+The default refresh window is:
 
-FEISHU_PROJECT_MCP_URL=xxx
-FEISHU_PROJECT_MCP_TOKEN=xxx
-MEEGO_PROJECT_KEY=信息科技部
+```text
+2025-01-01 through the latest completed Sunday, but only the latest completed week snapshot is written back
+```
+
+Cron entry:
+
+```cron
+30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash server/run_refresh.sh
 ```
 
 ## Manual Run
 
 ```bash
-cd /opt/feishu-project-delivery-cycle-updater/automation
+cd /opt/feishu-project-delivery-cycle-updater
 PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python \
 BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py \
-bash scripts/refresh_project_delivery_cycle_weekly.sh
+/bin/bash server/run_refresh.sh
 ```
 
-## Backfill
+Run through a specific completed Sunday:
 
 ```bash
-bash scripts/refresh_project_delivery_cycle_weekly.sh 2026-06-14
-```
-
-## Cron
-
-```cron
-30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater/automation && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash scripts/refresh_project_delivery_cycle_weekly.sh
+/bin/bash server/run_refresh.sh 2026-06-14
 ```
 
 ## Logs
@@ -48,71 +39,76 @@ bash scripts/refresh_project_delivery_cycle_weekly.sh 2026-06-14
 tail -n 200 automation/logs/project_delivery_cycle_weekly.log
 ```
 
-## Safe Write Procedure
+## Pre-Write Validation
 
-For a new Base/table:
+Probe fields:
 
 ```bash
-python feishu-online-sheets/scripts/publish_bitable.py \
-  --config automation/config/feishu_bitable_publish.json \
+cd automation
+../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json \
   --probe-fields
 ```
 
-Then:
+Dry-run:
 
 ```bash
-python feishu-online-sheets/scripts/publish_bitable.py \
-  --config automation/config/feishu_bitable_publish.json \
-  --upsert \
-  --sync-stale \
+../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json \
   --dry-run
 ```
 
-Only after the dry-run looks correct:
+Check for:
+
+- `table_fields` includes the expected target fields.
+- `skip_fields` includes `执行日期`, `研发时长/测试时长`, and `created_at`.
+- `unique_fields` is `季度 + 周次 + 需求分类`.
+- `planned_rows` is limited to the latest completed week categories.
+
+## Production Write
 
 ```bash
-python feishu-online-sheets/scripts/publish_bitable.py \
-  --config automation/config/feishu_bitable_publish.json \
-  --upsert \
-  --sync-stale
+../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
+  --config config/feishu_bitable_publish.json \
+  --upsert
 ```
+
+Do not use `--sync-stale` in the weekly job. The generated source contains only the latest week, so stale sync would delete historical week rows.
 
 ## Common Failures
 
-### `99991672 Access denied`
-
-The Feishu app is missing required Base scopes or has not been approved/published.
+### `99991672 Access denied` or `91403 Forbidden`
 
 Check:
 
-```text
-base:field:read
-bitable:app
-```
+- The Feishu app ID and secret are the correct app.
+- The app has Base permissions.
+- The app has access to the target app token and table.
 
-### `91403 Forbidden`
+### Missing Generated CSV
 
-The app can read metadata but cannot create or update records.
-
-Check:
-
-- Base file permissions
-- app identity access
-- record write scopes
-
-### Missing New Weeks
-
-The local data mart is stale. Run:
+Run the full refresh entry point:
 
 ```bash
-bash scripts/refresh_project_delivery_cycle_weekly.sh <last-sunday>
+/bin/bash server/run_refresh.sh
 ```
 
-The collection step must pull fresh Feishu Project data before the weekly cumulative CSV is rebuilt.
+Then check:
 
-## Security
+```text
+automation/data/efficiency_datamart/quarter_week_cumulative_metrics.csv
+```
 
-- Never commit `.env.local`.
-- Rotate app secrets if they were pasted into chat or logs.
-- Keep Base tokens and table IDs configurable.
-- Keep Feishu Project MCP tokens server-side only.
+### Field Mapping Error
+
+Run `--probe-fields`, compare the target Base field names with `automation/config/feishu_bitable_publish.json`, and update only the mapping that is wrong.
+
+### Unexpected Historical Changes
+
+Confirm the weekly job is not using `--sync-stale` and that `build_quarter_week_cumulative_metrics.py` is called with `--latest-week-only`.
+
+## Secret Handling
+
+- Do not commit `.env.local`.
+- Do not paste app secrets or MCP tokens into logs.
+- Rotate the Feishu app secret if it appears in chat history or persisted logs.

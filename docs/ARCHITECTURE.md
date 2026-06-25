@@ -1,132 +1,97 @@
 # Architecture
 
-This repository implements a delivery intelligence pipeline for Feishu Project demand work items. The key design decision is to separate raw project operations from governed analytics and from the final Feishu Base archive.
+This repository packages an end-to-end Feishu Project delivery intelligence pipeline.
 
-It is intentionally split into four layers:
-
-## 1. Source Layer: Feishu Project
-
-The source of truth is Feishu Project demand work items in the department project space.
-
-The extraction layer reads:
-
-- demand ID
-- demand title
-- demand status
-- online date
-- total delivery effort
-- development effort
-- testing effort
-- supporting effort fields
-
-The workflow targets completed or near-completed demand statuses such as:
-
-- `已结束`
-- `待验收`
-- `待推广`
-
-## 2. Data Mart Layer
-
-The local data mart is generated under:
+The system has four layers:
 
 ```text
-automation/data/efficiency_datamart/
+Feishu Project source
+  -> extraction and enrichment
+  -> analytical datamart and weekly snapshot generation
+  -> Feishu Base archival writeback
 ```
 
-Core tables:
+## Layer 1: Feishu Project Source
 
-| Table | Purpose |
-|---|---|
-| `demand_detail.csv` | One row per demand work item |
-| `monthly_metrics.csv` | Monthly aggregated metrics |
-| `quarterly_metrics.csv` | Quarterly aggregated metrics |
-| `size_metrics.csv` | Demand category summary |
-| `field_dictionary.csv` | Source field mapping and definitions |
-| `metric_dictionary.csv` | Metric formulas and meaning |
-| `quarter_week_cumulative_metrics.csv` | Quarter-to-date weekly cumulative output for Feishu Base |
+The source of truth is Feishu Project demand work items in the `信息科技部` space, with `需求` as the target work item type.
 
-This makes the pipeline inspectable and auditable before anything is written to Feishu Base.
+The collector reads:
 
-## 3. Analytics Layer
+- Work item identity and status.
+- Project online date.
+- Total delivery effort estimate.
+- RD effort estimate.
+- Test effort estimate.
+- Role members, node owners, subtask owners, and schedule data where available.
 
-The current weekly Base output focuses on quarter-to-date cumulative movement.
+## Layer 2: Extraction and Enrichment
 
-The grain is:
+`automation/scripts/collect_efficiency_enhanced.py` collects the base demand rows and enriches them with role and node context through the Feishu Project MCP tools.
+
+Primary output:
 
 ```text
-quarter + week-in-quarter + demand category
+automation/data/efficiency_enhanced/enhanced_metrics.jsonl
 ```
 
-This answers practical management questions:
+This layer is responsible for turning Feishu Project operational data into demand-level facts. It should not contain dashboard-specific formatting.
 
-- Is the current quarter accumulating demand faster than expected?
-- Are large demands increasing the long-tail delivery risk?
-- Is development effort moving consistently with testing effort?
-- Which demand category is driving delivery pressure?
-- How do weekly cumulative metrics change as the quarter progresses?
+## Layer 3: Analytical Datamart
 
-## 4. Archive And Consumption Layer: Feishu Base
+`automation/scripts/export_efficiency_datamart.py` converts enriched demand facts into a local datamart.
 
-The pipeline writes to the fixed Feishu Base table:
+Primary outputs:
 
 ```text
-项目交付周期
+automation/data/efficiency_datamart/demand_detail.csv
+automation/data/efficiency_datamart/field_dictionary.csv
+automation/data/efficiency_datamart/efficiency_datamart.xlsx
 ```
 
-This table acts as a durable operational archive and a dashboard source.
+This layer is the inspection and reuse layer. Analysts can review the generated files before publishing to Feishu Base.
 
-The writer uses idempotent upsert with:
+## Layer 4: Weekly Snapshot Generation
+
+`automation/scripts/build_quarter_week_cumulative_metrics.py` converts demand-level facts into quarter-to-date weekly snapshots.
+
+Primary output:
+
+```text
+automation/data/efficiency_datamart/quarter_week_cumulative_metrics.csv
+```
+
+Rows are grouped by:
 
 ```text
 季度 + 周次 + 需求分类
 ```
 
-This avoids destructive full-table replacement and preserves the stability of Feishu Base records.
+The weekly automation emits only the latest completed week snapshot. Previously written weeks remain as the historical archive and are not corrected by the normal weekly job.
 
-## End-To-End Flow
+## Layer 5: Feishu Base Archive
 
-```text
-Feishu Project MCP
-  -> collect_efficiency_enhanced.py
-  -> enhanced_metrics.jsonl
-  -> export_efficiency_datamart.py
-  -> demand_detail.csv / metric dictionaries / workbook
-  -> build_quarter_week_cumulative_metrics.py
-  -> quarter_week_cumulative_metrics.csv
-  -> publish_bitable.py --upsert --sync-stale
-  -> Feishu Base: 项目交付周期
+`feishu-online-sheets/scripts/publish_bitable.py` writes the generated snapshot CSV into the fixed Feishu Base table `项目交付周期`.
+
+The production write mode is:
+
+```bash
+--upsert
 ```
 
-## Why This Matters
+The script probes fields, maps source columns to Base fields, skips formula and auto-fill fields, updates the latest week row by key, and creates the latest week row if missing. The weekly job does not delete stale keys.
 
-The repository turns operational delivery data into reusable management information. It is built around a weekly review loop:
+## Automation Entry Point
+
+The weekly server entry point is:
 
 ```text
-observe -> compare -> diagnose -> improve -> archive
+server/run_refresh.sh
 ```
 
-It supports:
+It delegates to:
 
-- weekly delivery reviews
-- quarter-to-date trend tracking
-- demand category comparison
-- effort distribution monitoring
-- stable metric governance
-- long-term archival in Feishu Base
+```text
+automation/scripts/refresh_project_delivery_cycle_weekly.sh
+```
 
-## Design Principles
-
-1. Do not use Feishu Base as the computation engine.
-   The Base table is the published archive and visualization substrate. Metric computation happens before writing.
-
-2. Do not overwrite formula or auto-fill fields.
-   Feishu Base formulas remain owned by the Base schema.
-
-3. Do not use full-table replacement for recurring jobs.
-   Weekly refresh uses key-based upsert and stale-key cleanup.
-
-4. Keep the analytical grain stable.
-   The core grain is `季度 + 周次 + 需求分类`.
-
-5. Keep field IDs auditable.
-   Source field IDs are explicitly represented in the scripts and data dictionary.
+That script runs collection, datamart export, weekly snapshot generation, and Feishu Base upsert in one logged operation.

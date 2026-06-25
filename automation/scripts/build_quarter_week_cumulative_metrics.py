@@ -60,7 +60,7 @@ def last_sunday(today: date | None = None) -> date:
     return today - timedelta(days=days_since_sunday or 7)
 
 
-def build(source: Path, output: Path, start: date, end: date) -> tuple[int, int, date | None]:
+def build(source: Path, output: Path, start: date, end: date, latest_week_only: bool = False) -> tuple[int, int, date | None]:
     rows: list[dict[str, Any]] = []
     with source.open(encoding="utf-8-sig", newline="") as handle:
         for row in csv.DictReader(handle):
@@ -86,12 +86,23 @@ def build(source: Path, output: Path, start: date, end: date) -> tuple[int, int,
             )
     max_date = max((row["date"] for row in rows), default=None)
     results: list[dict[str, Any]] = []
-    for quarter in sorted({row["quarter"] for row in rows}):
+    quarters = sorted({row["quarter"] for row in rows})
+    if latest_week_only:
+        end_quarter, _, _ = quarter_bounds(end)
+        quarters = [quarter for quarter in quarters if quarter == end_quarter]
+    for quarter in quarters:
         q_rows = [row for row in rows if row["quarter"] == quarter]
         q_start = q_rows[0]["q_start"]
         q_end = min(q_rows[0]["q_end"], end)
-        week = 1
-        while q_start + timedelta(days=(week - 1) * 7) <= q_end:
+        if latest_week_only:
+            week_numbers = [((q_end - q_start).days // 7) + 1]
+        else:
+            week_numbers = []
+            week = 1
+            while q_start + timedelta(days=(week - 1) * 7) <= q_end:
+                week_numbers.append(week)
+                week += 1
+        for week in week_numbers:
             week_end = min(q_start + timedelta(days=week * 7 - 1), q_end)
             for group in ("中小需求", "大/超大需求"):
                 subset = [row for row in q_rows if row["group"] == group and row["date"] <= week_end]
@@ -113,7 +124,6 @@ def build(source: Path, output: Path, start: date, end: date) -> tuple[int, int,
                         "平均测试时长": round(sum(test) / len(test), 2),
                     }
                 )
-            week += 1
     output.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = ["季度", "周次", "需求分类", "需求数", "平均交付周期", "交付中位数", "交付P90", "平均研发时长", "平均测试时长"]
     with output.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -129,10 +139,11 @@ def main() -> None:
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--start", default="2025-01-01")
     parser.add_argument("--end", default=None, help="Inclusive end date. Defaults to most recent Sunday.")
+    parser.add_argument("--latest-week-only", action="store_true", help="Only write the cumulative snapshot for the week containing --end")
     args = parser.parse_args()
     start = datetime.strptime(args.start, "%Y-%m-%d").date()
     end = datetime.strptime(args.end, "%Y-%m-%d").date() if args.end else last_sunday()
-    source_rows, output_rows, max_date = build(Path(args.source), Path(args.output), start, end)
+    source_rows, output_rows, max_date = build(Path(args.source), Path(args.output), start, end, latest_week_only=args.latest_week_only)
     print(f"source_rows={source_rows}")
     print(f"output_rows={output_rows}")
     print(f"max_date={max_date}")

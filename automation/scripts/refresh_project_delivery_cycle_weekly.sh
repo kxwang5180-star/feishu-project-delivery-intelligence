@@ -33,6 +33,6 @@ fi
   cd "${ROOT_DIR}"
   "${PYTHON_BIN}" scripts/collect_efficiency_enhanced.py --force-base --end "${END_DATE}"
   "${PYTHON_BIN}" scripts/export_efficiency_datamart.py
-  "${PYTHON_BIN}" scripts/build_quarter_week_cumulative_metrics.py --end "${END_DATE}"
-  "${PYTHON_BIN}" "${BITABLE_PUBLISHER}" --config "${CONFIG_FILE}" --upsert --sync-stale
+  "${PYTHON_BIN}" scripts/build_quarter_week_cumulative_metrics.py --end "${END_DATE}" --latest-week-only
+  "${PYTHON_BIN}" "${BITABLE_PUBLISHER}" --config "${CONFIG_FILE}" --upsert
 } >> "${LOG_DIR}/project_delivery_cycle_weekly.log" 2>&1
