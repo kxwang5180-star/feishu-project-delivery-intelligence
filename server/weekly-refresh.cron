@@ -1,3 +1,3 @@
-# Run every Monday at 09:30 and refresh through the latest completed Sunday.
-# Replace /opt/feishu-project-delivery-cycle-updater with the actual server path.
-30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash server/run_refresh.sh
+# Run every Monday at 08:00 and refresh the latest current-quarter snapshot through the latest completed Sunday.
+# Replace /opt/feishu-project-delivery-intelligence with the actual server path.
+0 8 * * 1 cd /opt/feishu-project-delivery-intelligence && PYTHON_BIN=/opt/feishu-project-delivery-intelligence/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-intelligence/feishu-online-sheets/scripts/publish_bitable.py /bin/bash server/run_refresh.sh

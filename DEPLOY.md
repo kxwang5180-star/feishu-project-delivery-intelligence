@@ -1,19 +1,19 @@
 # Deployment
 
-Deploy this repository as a weekly Feishu Project delivery intelligence pipeline.
+Deploy this repository as a current-quarter Feishu Project delivery intelligence pipeline.
 
-The deployment is not only for writing Feishu tables. It runs the complete chain:
+The deployment runs:
 
 ```text
-extract -> model -> aggregate -> publish -> archive
+extract -> model -> current-quarter aggregate -> publish -> review
 ```
 
 ## Minimal Deployment
 
 ```bash
 cd /opt
-git clone https://github.com/kxwang5180-star/feishu-project-delivery-cycle-updater.git
-cd feishu-project-delivery-cycle-updater
+git clone https://github.com/kxwang5180-star/feishu-project-delivery-intelligence.git
+cd feishu-project-delivery-intelligence
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -28,25 +28,16 @@ cp ../server/env.example .env.local
 cp config/feishu_bitable_publish.example.json config/feishu_bitable_publish.json
 ```
 
-Edit `automation/.env.local`.
-
-Then run:
+Run:
 
 ```bash
-PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python \
-BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py \
+PYTHON_BIN=/opt/feishu-project-delivery-intelligence/.venv/bin/python \
+BITABLE_PUBLISHER=/opt/feishu-project-delivery-intelligence/feishu-online-sheets/scripts/publish_bitable.py \
 bash scripts/refresh_project_delivery_cycle_weekly.sh
 ```
 
-## Schedule
+Schedule:
 
 ```cron
-30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater/automation && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash scripts/refresh_project_delivery_cycle_weekly.sh
+0 8 * * 1 cd /opt/feishu-project-delivery-intelligence/automation && PYTHON_BIN=/opt/feishu-project-delivery-intelligence/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-intelligence/feishu-online-sheets/scripts/publish_bitable.py /bin/bash scripts/refresh_project_delivery_cycle_weekly.sh
 ```
-
-## Read More
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Data Contract](docs/DATA_CONTRACT.md)
-- [Operations](docs/OPERATIONS.md)
-- [Value Model](docs/VALUE_MODEL.md)

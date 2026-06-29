@@ -1,114 +1,103 @@
-# Operations Runbook
+# Operations
 
-This runbook covers normal weekly operation, validation, and failure handling.
+## Normal Run
 
-## Normal Weekly Run
+The production job runs every Monday at 08:00 and publishes only the latest current-quarter cumulative snapshot.
 
-The production cadence is Monday 09:30.
+```bash
+cd /opt/feishu-project-delivery-intelligence/automation
+PYTHON_BIN=/opt/feishu-project-delivery-intelligence/.venv/bin/python \
+BITABLE_PUBLISHER=/opt/feishu-project-delivery-intelligence/feishu-online-sheets/scripts/publish_bitable.py \
+bash scripts/refresh_project_delivery_cycle_weekly.sh
+```
 
-The default refresh window is:
+## Manual Backfill
+
+```bash
+bash scripts/refresh_project_delivery_cycle_weekly.sh 2026-06-28
+```
+
+## Expected Output
+
+The generated source file is:
 
 ```text
-2025-01-01 through the latest completed Sunday, but only the latest completed week snapshot is written back
+automation/data/efficiency_datamart/current_quarter_delivery_metrics.csv
 ```
 
-Cron entry:
+It should contain two rows:
 
-```cron
-30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash server/run_refresh.sh
+```text
+中小需求
+大/超大需求
 ```
 
-## Manual Run
+## Safe Write Procedure
+
+Probe:
 
 ```bash
-cd /opt/feishu-project-delivery-cycle-updater
-PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python \
-BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py \
-/bin/bash server/run_refresh.sh
-```
-
-Run through a specific completed Sunday:
-
-```bash
-/bin/bash server/run_refresh.sh 2026-06-14
-```
-
-## Logs
-
-```bash
-tail -n 200 automation/logs/project_delivery_cycle_weekly.log
-```
-
-## Pre-Write Validation
-
-Probe fields:
-
-```bash
-cd automation
-../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
-  --config config/feishu_bitable_publish.json \
+python feishu-online-sheets/scripts/publish_bitable.py \
+  --config automation/config/feishu_bitable_publish.json \
   --probe-fields
 ```
 
 Dry-run:
 
 ```bash
-../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
-  --config config/feishu_bitable_publish.json \
+python feishu-online-sheets/scripts/publish_bitable.py \
+  --config automation/config/feishu_bitable_publish.json \
+  --upsert \
+  --sync-stale \
   --dry-run
 ```
 
-Check for:
-
-- `table_fields` includes the expected target fields.
-- `skip_fields` includes `执行日期`, `研发时长/测试时长`, and `created_at`.
-- `unique_fields` is `季度 + 周次 + 需求分类`.
-- `planned_rows` is limited to the latest completed week categories.
-
-## Production Write
+Publish:
 
 ```bash
-../.venv/bin/python ../feishu-online-sheets/scripts/publish_bitable.py \
-  --config config/feishu_bitable_publish.json \
-  --upsert
+python feishu-online-sheets/scripts/publish_bitable.py \
+  --config automation/config/feishu_bitable_publish.json \
+  --upsert \
+  --sync-stale
 ```
 
-Do not use `--sync-stale` in the weekly job. The generated source contains only the latest week, so stale sync would delete historical week rows.
+## Cron
+
+```cron
+0 8 * * 1 cd /opt/feishu-project-delivery-intelligence/automation && PYTHON_BIN=/opt/feishu-project-delivery-intelligence/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-intelligence/feishu-online-sheets/scripts/publish_bitable.py /bin/bash scripts/refresh_project_delivery_cycle_weekly.sh
+```
+
+## Common Checks
+
+- `unique_fields` must be `季度 + 需求分类`.
+- `clear_fields` must include `周次`.
+- `planned_rows` should normally be `2`.
+- The Base table should normally have `2` managed rows after sync.
 
 ## Common Failures
 
-### `99991672 Access denied` or `91403 Forbidden`
+### Duplicate rows remain
 
-Check:
-
-- The Feishu app ID and secret are the correct app.
-- The app has Base permissions.
-- The app has access to the target app token and table.
-
-### Missing Generated CSV
-
-Run the full refresh entry point:
+Run with:
 
 ```bash
-/bin/bash server/run_refresh.sh
+--upsert --sync-stale
 ```
 
-Then check:
+The publisher removes duplicate managed keys.
 
-```text
-automation/data/efficiency_datamart/quarter_week_cumulative_metrics.csv
+### Week text still appears
+
+Confirm config includes:
+
+```json
+"clear_fields": ["周次"]
 ```
 
-### Field Mapping Error
+### Missing latest demands
 
-Run `--probe-fields`, compare the target Base field names with `automation/config/feishu_bitable_publish.json`, and update only the mapping that is wrong.
+Refresh Feishu Project data first:
 
-### Unexpected Historical Changes
-
-Confirm the weekly job is not using `--sync-stale` and that `build_quarter_week_cumulative_metrics.py` is called with `--latest-week-only`.
-
-## Secret Handling
-
-- Do not commit `.env.local`.
-- Do not paste app secrets or MCP tokens into logs.
-- Rotate the Feishu app secret if it appears in chat history or persisted logs.
+```bash
+bash scripts/refresh_project_delivery_cycle_weekly.sh <latest-sunday>
+```

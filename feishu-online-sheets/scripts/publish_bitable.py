@@ -129,6 +129,7 @@ def build_records(
     field_map: dict[str, str],
     dictionary_map: dict[str, str],
     skip_fields: set[str],
+    clear_fields: set[str],
     limit: int | None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     source_headers = set(headers)
@@ -139,6 +140,11 @@ def build_records(
         for field in bitable_fields:
             name = field.get("field_name") or field.get("name")
             if not name or name in skip_fields:
+                continue
+            if name in clear_fields:
+                target_fields[name] = ""
+                if name not in mapped_fields:
+                    mapped_fields.append(name)
                 continue
             source_col = field_map.get(name) or (name if name in source_headers else dictionary_map.get(name))
             if not source_col or source_col not in source_row:
@@ -221,11 +227,17 @@ def record_key(fields: dict[str, Any], unique_fields: list[str]) -> str:
 
 def split_upserts(records: list[dict[str, Any]], existing_records: list[dict[str, Any]], unique_fields: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
     existing_by_key: dict[str, str] = {}
+    stale_record_ids: list[str] = []
     for item in existing_records:
         fields = item.get("fields") or {}
         key = record_key(fields, unique_fields)
-        if key and key not in existing_by_key and item.get("record_id"):
-            existing_by_key[key] = item["record_id"]
+        record_id = item.get("record_id")
+        if not key or not record_id:
+            continue
+        if key not in existing_by_key:
+            existing_by_key[key] = record_id
+        else:
+            stale_record_ids.append(record_id)
     source_keys: set[str] = set()
     to_create: list[dict[str, Any]] = []
     to_update: list[dict[str, Any]] = []
@@ -238,7 +250,7 @@ def split_upserts(records: list[dict[str, Any]], existing_records: list[dict[str
             to_update.append({"record_id": existing_by_key[key], "fields": fields})
         else:
             to_create.append(record)
-    stale_record_ids = [record_id for key, record_id in existing_by_key.items() if key not in source_keys]
+    stale_record_ids.extend(record_id for key, record_id in existing_by_key.items() if key not in source_keys)
     return to_create, to_update, stale_record_ids
 
 
@@ -280,8 +292,9 @@ def main() -> int:
     rows, headers = read_csv_dicts(source)
     dictionary_map = read_field_dictionary(field_dictionary)
     skip_fields = set(config.get("skip_fields", []))
+    clear_fields = set(config.get("clear_fields", []))
     field_map = dict(config.get("field_map", {}))
-    records, mapped_fields = build_records(rows, headers, fields, field_map, dictionary_map, skip_fields, args.limit)
+    records, mapped_fields = build_records(rows, headers, fields, field_map, dictionary_map, skip_fields, clear_fields, args.limit)
 
     summary = {
         "ok": True,
@@ -292,6 +305,7 @@ def main() -> int:
         "planned_rows": len(records),
         "table_fields": [f.get("field_name") or f.get("name") for f in fields],
         "skip_fields": sorted(skip_fields),
+        "clear_fields": sorted(clear_fields),
         "mapped_fields": mapped_fields,
     }
 

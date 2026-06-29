@@ -1,16 +1,16 @@
 # Value Model
 
-This project is valuable only if it helps the department make better delivery decisions. The purpose is not to automate a table write; the purpose is to create a reliable weekly management signal.
+This project is valuable only if it helps the department make better delivery decisions. The purpose is not to automate a table write; the purpose is to create a reliable current-quarter management signal.
 
 ## Management Questions
 
-The weekly Base output is designed to answer:
+The Base output is designed to answer:
 
 1. Is the current quarter's delivery load accumulating normally?
 2. Are large or complex demands becoming a larger share of work?
 3. Is the P90 delivery effort moving upward, indicating long-tail risk?
 4. Is development effort increasing faster than testing effort?
-5. Are weekly changes caused by demand count growth or by demand complexity?
+5. Is the quarter being driven by demand count growth or by demand complexity?
 6. Which category should be discussed in the next delivery review?
 
 ## Signals Produced
@@ -27,7 +27,7 @@ The weekly Base output is designed to answer:
 
 ## Review Usage
 
-In a weekly review, the table can be used in this order:
+In a delivery review, the table can be used in this order:
 
 1. Look at current-quarter cumulative demand count.
 2. Compare `中小需求` and `大/超大需求`.
@@ -44,7 +44,7 @@ Feishu Base provides:
 - views and filters for review meetings
 - simple charting
 - formula fields such as `研发时长/测试时长`
-- historical records without creating new weekly documents
+- a stable latest snapshot without creating new weekly documents
 
 The repository keeps calculation outside Base while using Base as the durable collaboration layer.
 
@@ -52,9 +52,9 @@ The repository keeps calculation outside Base while using Base as the durable co
 
 Potential future enhancements:
 
-- weekly commentary generation
+- automated review commentary generation
 - anomaly detection for sudden P90 jumps
 - category-level trend visualization
 - owner/team dimensions
 - project-level drill-down
-- automatic weekly Feishu document summary linked to the Base table
+- automatic Feishu document summary linked to the Base table

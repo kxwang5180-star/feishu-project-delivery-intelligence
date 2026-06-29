@@ -1,228 +1,146 @@
 # Feishu Project Delivery Intelligence
 
+Recommended repository name: **`feishu-project-delivery-intelligence`**
 
-This repository packages a delivery intelligence system for Feishu Project. It is not a spreadsheet uploader and it is not merely a Codex skill.
+This repository packages a delivery intelligence workflow for Feishu Project. It is not just a Feishu table writer or a Codex skill.
 
-Its purpose is to convert Feishu Project demand workflow data into a reusable management intelligence layer:
+Its role is to turn Feishu Project demand workflow data into a small, governed, always-current management signal:
 
 ```text
 Feishu Project work items
   -> governed metric extraction
   -> local analytical data mart
-  -> delivery efficiency models
-  -> quarter-to-date weekly trend snapshots
-  -> Feishu Base archival table
-  -> dashboard / review / improvement actions
+  -> current-quarter delivery snapshot
+  -> Feishu Base operational table
+  -> review, visualization, and management insight
 ```
 
-The repository focuses on one operational question:
+## Current Product Decision
 
-> How is the department's demand delivery efficiency changing over time, and which demand categories are driving the change?
+The Feishu Base table should only show the **latest cumulative data for the current quarter**.
+
+It should not keep one row per week. It should not recalculate or rewrite historical weekly snapshots.
+
+Current grain:
+
+```text
+current quarter + demand category
+```
+
+So the table normally contains two managed rows:
+
+```text
+2026-Q2 / 中小需求
+2026-Q2 / 大/超大需求
+```
+
+The `周次` field is deliberately cleared because the table is no longer weekly-grained.
 
 ## Why This Exists
 
-Feishu Project already contains the raw operational data, but raw work item fields are not enough for management review.
+Feishu Project contains the raw operational facts, but management review needs a stable analytical layer:
 
-Common issues:
+- one delivery effort definition
+- one demand classification rule
+- one current-quarter view
+- one Base table for visualization and archive
+- one automated Monday refresh
 
-- Delivery metrics are mixed with different definitions.
-- Natural-day cycle, estimated person-days, development effort, and testing effort are often discussed as if they were the same thing.
-- Weekly review data is manually exported or recreated.
-- Trend charts lack stable lineage and are hard to audit.
-- Feishu Base tables become a dumping ground instead of a governed analytical layer.
+The goal is not to produce more files. The goal is to provide a dependable signal for delivery review:
 
-This project turns that into a controlled workflow:
+- current-quarter demand accumulation
+- large-demand pressure
+- P90 long-tail risk
+- development/testing effort structure
+- category-level delivery scale
 
-- One metric contract.
-- One data mart.
-- One weekly refresh job.
-- One Feishu Base archive.
-- One place for accumulated delivery knowledge.
+## Core Metrics
 
-## Product Positioning
+| Metric | Source | Meaning |
+|---|---|---|
+| Online date | `field_584a64` | Determines current quarter attribution |
+| Delivery effort | `field_fba983` | Total estimated person-days across all roles |
+| Development effort | `field_db341e` | R&D effort excluding testing |
+| Testing effort | `field_715f2b` | QA/testing effort |
 
-This is best understood as a lightweight delivery intelligence product.
-
-| Layer | Role |
-|---|---|
-| Feishu Project | Source of truth for demand workflow and fields |
-| Extraction | Pulls eligible demand work items from Feishu Project MCP |
-| Data mart | Stores demand-level facts, field dictionaries, and metric dictionaries |
-| Analytics | Produces weekly quarter-to-date cumulative metrics |
-| Visualization substrate | Feishu Base table for views, charts, filtering, and review |
-| Knowledge archive | Stable historical snapshots for long-term comparison |
-
-## What It Is Not
-
-This repository is not:
-
-- a one-off report generator
-- a table-copy utility
-- a generic Feishu API wrapper
-- a dashboard-only project
-- a replacement for Feishu Project
-
-It is the analytical bridge between Feishu Project operations and repeatable delivery management.
-
-## Core Business Logic
-
-The current analytical model intentionally keeps the metric set small and governed.
-
-### Delivery Effort
-
-```text
-delivery_effort = field_fba983
-```
-
-Meaning:
-
-```text
-total estimated person-days across product, frontend, backend, testing, and other participating roles
-```
-
-This is the only delivery effort definition used in the Base output. The older natural-day delivery cycle is not used for this table because it mixes calendar waiting time with effort scale.
-
-### Development Effort
-
-```text
-development_effort = field_db341e
-```
-
-Development effort excludes testing.
-
-### Testing Effort
-
-```text
-testing_effort = field_715f2b
-```
-
-### Online Date
-
-```text
-online_date = field_584a64
-```
-
-The online date determines monthly, quarterly, and weekly cumulative attribution.
+The older natural-day delivery cycle is not used in this Base output.
 
 ## Demand Classification
 
-Demand classification is based on delivery effort:
+| Category | Rule |
+|---|---|
+| `中小需求` | delivery effort <= 60 |
+| `大/超大需求` | delivery effort > 60 |
 
-| Category | Rule | Interpretation |
-|---|---|---|
-| `中小需求` | delivery effort <= 60 | Normal demand flow, used to monitor throughput and stability |
-| `大/超大需求` | delivery effort > 60 | High-impact demand, used to monitor long-tail risk and resource concentration |
-
-The Feishu Base field is a single-select field. The writer maps values to the Base options exactly:
-
-```text
-中小需求
-大/超大需求
-```
-
-## Weekly Quarter-To-Date View
-
-The main Base table is `项目交付周期`.
-
-Each record represents:
-
-```text
-quarter + week-in-quarter + demand category
-```
-
-Example:
-
-```text
-2026-Q2 / W11（截至2026-06-14） / 大/超大需求
-```
-
-This design supports a quarterly review rhythm while still showing weekly movement.
-
-It answers questions such as:
-
-- Are large demands accumulating faster than small/medium demands?
-- Is the quarter's P90 delivery effort rising?
-- Is development effort increasing faster than testing effort?
-- Are current-quarter numbers improving or deteriorating week by week?
-- Is the demand mix changing in a way that will affect delivery capacity?
-
-## Feishu Base Write Contract
+## Feishu Base Contract
 
 Target table:
 
 ```text
-Base: NgEPbbtokaswvBstu0DcMYMlnKg
-Table: 项目交付周期
+Base app_token: NgEPbbtokaswvBstu0DcMYMlnKg
+Table name: 项目交付周期
 Table ID: tblPz1BLjGbtQymz
 ```
 
 Idempotency key:
 
 ```text
-季度 + 周次 + 需求分类
+季度 + 需求分类
 ```
 
 Published fields:
 
 | Field | Meaning |
 |---|---|
-| `季度` | Quarter, for example `2026-Q2` |
-| `周次` | Quarter week bucket and cutoff date |
+| `季度` | Current quarter, such as `2026-Q2` |
 | `需求分类` | `中小需求` or `大/超大需求` |
-| `需求数` | Cumulative demand count up to the week cutoff |
+| `需求数` | Current-quarter cumulative demand count |
 | `平均交付周期` | Average delivery effort |
 | `交付中位数` | Median delivery effort |
-| `交付P90` | Long-tail delivery effort indicator |
+| `交付P90` | Long-tail delivery effort |
 | `平均研发时长` | Average development effort |
 | `平均测试时长` | Average testing effort |
 
-Skipped fields:
+Fields intentionally skipped or cleared:
 
-| Field | Reason |
+| Field | Handling |
 |---|---|
-| `执行日期` | Feishu Base formula field |
-| `研发时长/测试时长` | Feishu Base formula field |
-| `created_at` | Auto-filled timestamp |
+| `周次` | Cleared. The table is no longer week-grained. |
+| `执行日期` | Feishu Base formula field, not written by the job |
+| `研发时长/测试时长` | Feishu Base formula field, not written by the job |
+| `created_at` | Auto-filled timestamp, not written by the job |
 
-## System Workflow
+## Workflow
 
 ```text
-1. Extract Feishu Project demand work items
-2. Cache raw and enriched demand facts as JSONL
-3. Build CSV/XLSX data mart
-4. Generate quarter-week cumulative metric table
-5. Probe Feishu Base fields
-6. Dry-run mapping and row counts
-7. Upsert into Feishu Base by stable key
-8. Use Base views/charts as operational dashboard and archive
+1. Extract Feishu Project demand data through MCP.
+2. Cache raw/enriched demand facts locally.
+3. Build the demand efficiency data mart.
+4. Generate current_quarter_delivery_metrics.csv.
+5. Probe Feishu Base fields.
+6. Upsert by 季度 + 需求分类.
+7. Delete stale managed records that are not in the current snapshot.
+8. Use Feishu Base for visualization, review, and current-state archival.
 ```
 
-The weekly job does not delete and recreate the whole table. It uses idempotent upsert:
-
-- update existing keys
-- create missing keys
-- delete stale keys that are no longer in the source
-
-## Repository Layout
+## Directory Layout
 
 ```text
 .
-├── feishu-online-sheets/                  # Codex skill for Feishu Sheets/Base publishing
+├── feishu-online-sheets/
 │   ├── SKILL.md
 │   └── scripts/
-│       ├── publish_sheet.py               # Feishu Sheets writer
-│       └── publish_bitable.py             # Feishu Base writer with upsert support
+│       ├── publish_sheet.py
+│       └── publish_bitable.py
 ├── automation/
 │   ├── scripts/
 │   │   ├── collect_efficiency_enhanced.py
 │   │   ├── export_efficiency_datamart.py
 │   │   ├── build_quarter_week_cumulative_metrics.py
 │   │   └── refresh_project_delivery_cycle_weekly.sh
-│   ├── pmo_agent/                         # Feishu Project MCP client and field parsing
+│   ├── pmo_agent/
 │   ├── config/
-│   │   └── feishu_bitable_publish.example.json
 │   └── docs/
-│       └── project-delivery-cycle-server-deploy.md
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── DATA_CONTRACT.md
@@ -256,48 +174,27 @@ cp ../server/env.example .env.local
 cp config/feishu_bitable_publish.example.json config/feishu_bitable_publish.json
 ```
 
-Edit `automation/.env.local`:
-
-```dotenv
-FEISHU_APP_ID=cli_xxx
-FEISHU_APP_SECRET=xxx
-FEISHU_BASE_URL=https://open.feishu.cn
-
-FEISHU_PROJECT_MCP_URL=xxx
-FEISHU_PROJECT_MCP_TOKEN=xxx
-MEEGO_PROJECT_KEY=信息科技部
-```
-
 Run once:
 
 ```bash
-cd /opt/feishu-project-delivery-cycle-updater/automation
-PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python \
-BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py \
+PYTHON_BIN=/opt/feishu-project-delivery-intelligence/.venv/bin/python \
+BITABLE_PUBLISHER=/opt/feishu-project-delivery-intelligence/feishu-online-sheets/scripts/publish_bitable.py \
 bash scripts/refresh_project_delivery_cycle_weekly.sh
 ```
 
-Backfill to a specific date:
+Backfill to a specific Sunday:
 
 ```bash
-bash scripts/refresh_project_delivery_cycle_weekly.sh 2026-06-14
+bash scripts/refresh_project_delivery_cycle_weekly.sh 2026-06-28
 ```
 
-## Weekly Schedule
+## Schedule
 
-Run every Monday at 09:30:
+Run every Monday at 08:00:
 
 ```cron
-30 9 * * 1 cd /opt/feishu-project-delivery-cycle-updater/automation && PYTHON_BIN=/opt/feishu-project-delivery-cycle-updater/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-cycle-updater/feishu-online-sheets/scripts/publish_bitable.py /bin/bash scripts/refresh_project_delivery_cycle_weekly.sh
+0 8 * * 1 cd /opt/feishu-project-delivery-intelligence/automation && PYTHON_BIN=/opt/feishu-project-delivery-intelligence/.venv/bin/python BITABLE_PUBLISHER=/opt/feishu-project-delivery-intelligence/feishu-online-sheets/scripts/publish_bitable.py /bin/bash scripts/refresh_project_delivery_cycle_weekly.sh
 ```
-
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Data Contract](docs/DATA_CONTRACT.md)
-- [Operations](docs/OPERATIONS.md)
-- [Value Model](docs/VALUE_MODEL.md)
-- [Deployment](DEPLOY.md)
 
 ## Required Feishu Permissions
 
@@ -316,11 +213,8 @@ A working Feishu Project MCP endpoint with access to 信息科技部 / 需求
 
 ## Operating Principles
 
-- Keep field IDs and metric formulas explicit.
-- Keep generated data out of Git.
-- Keep Feishu secrets in server-side env files.
-- Probe and dry-run before the first write to a new table.
-- Preserve Feishu Base formula and auto-fill fields.
-- Use upsert, not destructive full-table refresh.
-- Treat the Base table as both a dashboard source and a historical archive.
-
+- Keep only the latest current-quarter snapshot in the Base table.
+- Use `季度 + 需求分类` as the stable key.
+- Clear `周次`; do not write formula or auto-fill fields.
+- Use upsert and stale-key cleanup, not blind append.
+- Keep generated data and secrets out of Git.

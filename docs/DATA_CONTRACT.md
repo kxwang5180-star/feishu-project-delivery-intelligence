@@ -1,106 +1,75 @@
 # Data Contract
 
-This document defines the stable source, metric, and Feishu Base write contracts for the delivery intelligence pipeline.
+This document defines the Feishu Base output contract for `项目交付周期`.
 
-## Source Scope
+## Grain
 
-```text
-Feishu Project space: 信息科技部
-Work item type: 需求
-Start date: 2025-01-01
-Default end date: latest completed Sunday
-```
-
-The collector focuses on demand work items with usable online dates and delivery-effort fields.
-
-## Core Source Fields
+One row represents:
 
 ```text
-field_584a64  project online time
-field_fba983  total delivery effort estimate
-field_db341e  RD effort estimate
-field_715f2b  test effort estimate
+current quarter + demand category
 ```
 
-Additional role, node, subtask, and schedule fields are collected for traceability and extended analysis.
-
-## Derived Demand Metrics
+The table should normally contain two managed rows:
 
 ```text
-metric_delivery_effort_days  = field_fba983
-metric_rd_days_excl_test     = field_db341e
-metric_test_days             = field_715f2b
+current quarter / 中小需求
+current quarter / 大/超大需求
 ```
 
-Demand category:
+## Idempotency Key
 
 ```text
-中小需求     metric_delivery_effort_days <= 60
-大/超大需求  metric_delivery_effort_days > 60
+季度 + 需求分类
 ```
 
-## Weekly Snapshot Grain
+## Published Fields
 
-The final Base archive grain is:
+| Field | Type | Required | Source |
+|---|---:|---:|---|
+| `季度` | Text | Yes | Current quarter from online date |
+| `需求分类` | Single select | Yes | Derived from delivery effort |
+| `需求数` | Number | Yes | Current-quarter cumulative demand count |
+| `平均交付周期` | Number | Yes | Average delivery effort |
+| `交付中位数` | Number | Yes | Median delivery effort |
+| `交付P90` | Number | Yes | P90 delivery effort |
+| `平均研发时长` | Number | Yes | Average development effort |
+| `平均测试时长` | Number | Yes | Average testing effort |
+
+## Cleared Or Skipped Fields
+
+| Field | Handling |
+|---|---|
+| `周次` | Cleared on write. The table no longer keeps weekly rows. |
+| `执行日期` | Formula field, skipped |
+| `研发时长/测试时长` | Formula field, skipped |
+| `created_at` | Auto-fill field, skipped |
+
+## Source Field IDs
+
+| Metric | Source Field |
+|---|---|
+| Online date | `field_584a64` |
+| Delivery effort | `field_fba983` |
+| Development effort | `field_db341e` |
+| Testing effort | `field_715f2b` |
+
+## Refresh Window
+
+Default refresh:
 
 ```text
-季度 + 周次 + 需求分类
+current quarter through the most recent Sunday
 ```
 
-Example:
+The job is scheduled for Monday 08:00, so the default cutoff is the previous Sunday.
 
-```text
-季度: 2026-Q2
-周次: W11（截至2026-06-14）
-需求分类: 中小需求
-```
+## Stale Record Handling
 
-Each row is quarter-to-date, not a simple weekly delta. A row for `W11` includes all demands in that quarter up to the `W11` cutoff date.
+With `--upsert --sync-stale`, the publisher:
 
-## Output Fields Written to Feishu Base
+- updates the two current-quarter category rows
+- creates them if missing
+- deletes old weekly/history rows whose managed key is stale or duplicated
 
-```text
-季度
-周次
-需求分类
-需求数
-平均交付周期
-交付中位数
-交付P90
-平均研发时长
-平均测试时长
-```
-
-## Fields Intentionally Skipped
-
-```text
-执行日期
-研发时长/测试时长
-created_at
-```
-
-These fields are maintained by Feishu Base formula or automatic fill behavior and should not be written by the updater.
-
-## Upsert Contract
-
-The Feishu Base publisher uses this unique key:
-
-```text
-季度 + 周次 + 需求分类
-```
-
-Expected behavior:
-
-- Existing keys are updated.
-- Missing keys are created.
-- Weekly automation writes only the latest completed week key set.
-- Historical week keys are retained and are not recalculated by the weekly job.
-- Full-table replacement is not the normal refresh mode.
-
-## Target Base
-
-```text
-Base app_token: NgEPbbtokaswvBstu0DcMYMlnKg
-Table name: 项目交付周期
-table_id: tblPz1BLjGbtQymz
-```
+This is a controlled cleanup, not a blind full-table replacement.
